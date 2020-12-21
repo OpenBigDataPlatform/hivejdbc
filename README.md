@@ -61,18 +61,18 @@ conn = connect(host='example.com',
 If the hive-server has `ssl` enabled you'll need to provide a `jks` trust store that contains the servers public 
 certificate.
 ```python
-conn = connect(host='usdendrh321.arrow.com',
+conn = connect(host='hive2.example.com',
                port=10015,
                database='default',
                driver='hive-client-hive-2.1.1-hdfs-3.0.3-fatjar.jar',
                ssl=True,
                trust_store='./truststore.jks',
                trust_password='changeit',
-               principal='hive/usdendrh321.arrow.com@CLOUDERA.ARROW.COM',
-               user_principal='hive/usdendrh321.arrow.com',
+               principal='hive/hive2.example.com@EXAMPLE.COM',
+               user_principal='hive/hive2.example.com',
                user_keytab='hive.keytab',
-               realm='CLOUDERA.ARROW.COM',
-               kdc='usdenprh354.arrow.com:88')
+               realm='EXAMPLE.COM',
+               kdc='kerberosdc.example.com:88')
 ```
 
 ### Kerberos
@@ -92,14 +92,14 @@ Connect to...
   default locations for the `token-cache` are searched
 - if `kinit` has not been performed, or a `token-cache` cannot be found an exception will be thrown
 ```python
-conn = connect(host='usdendrh321.arrow.com',
+conn = connect(host='hive2.example.com',
                port=10015,
                database='default',
                driver='hive-client-hive-2.1.1-hdfs-3.0.3-fatjar.jar',
                ssl=True,
                trust_store='./truststore.jks',
                trust_password='changeit',
-               principal='hive/usdendrh321.arrow.com@CLOUDERA.ARROW.COM')
+               principal='hive/hive2.example.com@EXAMPLE.COM')
 ```
 
 #### `hivejdbc` does the `kinit` via `keytab` and a custom `krb5.conf`
@@ -113,16 +113,16 @@ connect to...
 - we will provide the `kdc` and `realm` via the `krb5_conf` argument
   if we didn't provide `krb5_conf` argument default locations would be searched within various system paths
 ```python
-conn = connect(host='usdendrh321.arrow.com',
+conn = connect(host='hive2.example.com',
                port=10015,
                database='default',
                driver='hive-client-hive-2.1.1-hdfs-3.0.3-fatjar.jar',
                ssl=True,
                trust_store='./truststore.jks',
                trust_password='changeit',
-               principal='hive/usdendrh321.arrow.com@CLOUDERA.ARROW.COM',
+               principal='hive/hive2.example.com@EXAMPLE.COM',
                krb5_conf='kerberos/custom_krb5.conf',
-               user_principal='hive/usdendrh321.arrow.com',
+               user_principal='hive/hive2.example.com',
                user_keytab='a133041.keytab')
 ```
 
@@ -137,16 +137,16 @@ connect to...
 - using a keytab for authentication
 - this configuration is the most portable...
 ```python
-conn = connect(host='usdendrh321.arrow.com',
+conn = connect(host='hive2.example.com',
                port=10015,
                database='default',
                driver='hive-client-hive-2.1.1-hdfs-3.0.3-fatjar.jar',
                ssl=True,
                trust_store='./truststore.jks',
                trust_password='changeit',
-               principal='hive/usdendrh321.arrow.com@CLOUDERA.ARROW.COM',
-               user_principal='hive/usdendrh321.arrow.com',
-               user_keytab='hive.keytab',
-               realm='CLOUDERA.ARROW.COM',
-               kdc='usdenprh354.arrow.com:88')
+               principal='hive/hive2.example.com@EXAMPLE.COM',
+               user_principal='hive/hive2.example.com',
+ ~~~~              user_keytab='hive.keytab',
+               realm='EXAMPLE.COM',
+               kdc='kerberosdc.example.com:88')
 ```
