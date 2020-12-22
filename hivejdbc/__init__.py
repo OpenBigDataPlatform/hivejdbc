@@ -47,12 +47,12 @@ class HiveArgParser(ArgumentParser):
     cursor = ArgumentOpts(argtype=JdbcCursor, description='cursor class for queries')
     ssl = ArgumentOpts(argtype=bool, description='enable ssl connection mode, if the server is running with '
                                                  'ssl certificates enabled this is required')
-    trust_store = ArgumentOpts(argtype=str)
-    trust_password = ArgumentOpts(argtype=str)
+    trust_store = ArgumentOpts(argtype=str, requires=['trust_password', 'ssl'])
+    trust_password = ArgumentOpts(argtype=str, requires=['trust_store', 'ssl'])
     user = ArgumentOpts(argtype=str, description='Hive username if using username/password auth')
     password = ArgumentOpts(argtype=str, secret=True, requires=['user'], description='Hive basic auth password')
-    user_principal = ArgumentOpts(argtype=str, description='Kerberos user principal', requires=['keytab'])
-    realm = ArgumentOpts(argtype=str, description='Kerberos realm (domain)', requires=['principal', 'keytab'])
+    user_principal = ArgumentOpts(argtype=str, description='Kerberos user principal', requires=['user_keytab'])
+    realm = ArgumentOpts(argtype=str, description='Kerberos realm (domain)', requires=['principal', 'user_keytab'])
     properties = ArgumentOpts(argtype=dict, default={},
                               description='properties passed to org.apache.hive.jdbc.HiveDriver "connect" method')
     transport = ArgumentOpts(argtype=str, default='binary', choices=('binary', 'http'))
@@ -67,9 +67,9 @@ class HiveArgParser(ArgumentParser):
                                        requires=['service_discovery_mode'],
                                        description='Zookeeper namespace string for service discovery')
 
-    @Decorator.argument(argtype=str)
+    @Decorator.argument(argtype=str, excludes=['username', 'password'])
     def principal(self, user):
-        """Kerberos principal (username), usually fully qualified: `user@EXAMPLE.COM`"""
+        """Hive SERVICE principal, usually "hive" - should be fully qualified: `hive@EXAMPLE.COM`"""
         if not Jvm.is_running():
             Jvm.add_argument('javax.security.auth.useSubjectCredsOnly',
                              '-Djavax.security.auth.useSubjectCredsOnly=false')
@@ -99,17 +99,21 @@ class HiveArgParser(ArgumentParser):
         return path
 
     @Decorator.argument(argtype=str, requires=['principal', 'user_principal', 'user_keytab'])
-    def kdc(self, host):
+    def kdc(self, kdc_host):
         """Kerberos kdc hostname:port combination"""
-        if ':' not in host or len(host.split(':') != 2) or not str(host.split(':')[-1]).isdigit():
-            raise ValueError('kdc must contain a host and numerical port separated by ":"')
+        if not isinstance(kdc_host, str):
+            raise ValueError('expecting `str`, got: {}'.format(type(kdc_host)))
+
+        if ':' not in kdc_host or len(kdc_host.split(':')) != 2 or not str(kdc_host.split(':')[-1]).isdigit():
+            raise ValueError('kdc must contain a host and numerical port separated by ":", '
+                             'kdc invalid: {}'. format(kdc_host))
 
         if not Jvm.is_running():
-            Jvm.add_argument('java.security.krb5.kdc', '-Djava.security.krb5.kdc={}'.format(host))
+            Jvm.add_argument('java.security.krb5.kdc', '-Djava.security.krb5.kdc={}'.format(kdc_host))
         else:
-            System.set_property('java.security.krb5.kdc', host)
+            System.set_property('java.security.krb5.kdc', kdc_host)
 
-        return host
+        return kdc_host
 
     @Decorator.argument(argtype=dict)
     def hive_conf_list(self, conf_map):

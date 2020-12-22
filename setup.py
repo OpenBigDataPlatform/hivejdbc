@@ -5,7 +5,7 @@ setup(
     version='0.1.0',
     author='OpenBigDataPlatform',
     license='Apache 2',
-    url='',
+    url='https://github.com/OpenBigDataPlatform/hivejdbc',
     description=('Hive database driver via jdbc'),
     long_description=open('README.md').read(),
     keywords=('dbapi jdbc hive hadoop'),
