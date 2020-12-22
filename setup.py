@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='hivejdbc',
-    version='0.1.0',
+    version='0.1.1',
     author='OpenBigDataPlatform',
     license='Apache 2',
     url='https://github.com/OpenBigDataPlatform/hivejdbc',
@@ -21,6 +21,6 @@ setup(
 
     packages=['hivejdbc'],
     install_requires=[
-        'pyjdbc>=0.1.0'
+        'pyjdbc>=0.1.1'
     ],
 )
