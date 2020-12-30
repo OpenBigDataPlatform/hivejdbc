@@ -20,6 +20,42 @@ conn = connect('example.com', 'default', cursor=DictCursor)
 
 ```
 
+### Cursors support `with`
+```python
+from hivejdbc import connect
+conn = connect('example.com', database='default')
+with conn.cursor() as cursor:
+    cursor.execute('select * from test.persons')
+    rows = cursor.fetchall()
+```
+
+### Cursors are iterable
+```python
+from hivejdbc import connect
+conn = connect('example.com', database='default')
+cursor = conn.cursor()
+cursor.execute('select * from test.persons')
+for row in cursor:
+    print(row[0])
+cursor.close()
+```
+
+### Cursors Support
+- `fetchone()`
+- `fetchmany()`
+- `fetchall()`
+
+```python
+from hivejdbc import connect
+conn = connect('example.com', database='default')
+cursor = conn.cursor()
+cursor.execute('select * from test.persons')
+cursor.fetchone() # fetch first row or None
+cursor.fetchmany(5) # fetch next 5 rows
+cursor.fetchall() # fetch remaining rows or empty list
+cursor.close()
+```
+
 ## Connection Strings
 `hivejdbc` features many `connect` function arguments. Many of these arguments can be ignored 
 and are simply present to offer the full options provided by the **Hive** jdbc driver.
@@ -123,7 +159,7 @@ conn = connect(host='hive2.example.com',
                principal='hive/hive2.example.com@EXAMPLE.COM',
                krb5_conf='kerberos/custom_krb5.conf',
                user_principal='hive/hive2.example.com',
-               user_keytab='a133041.keytab')
+               user_keytab='user.keytab')
 ```
 
 
@@ -146,7 +182,94 @@ conn = connect(host='hive2.example.com',
                trust_password='changeit',
                principal='hive/hive2.example.com@EXAMPLE.COM',
                user_principal='hive/hive2.example.com',
- ~~~~              user_keytab='hive.keytab',
+               user_keytab='hive.keytab',
                realm='EXAMPLE.COM',
                kdc='kerberosdc.example.com:88')
+```
+
+## Queries and Parameters
+
+For these examples we'll setup a `test` database with a `persons` table...
+
+```python
+cursor = conn.cursor()
+cursor.execute('CREATE DATABASE IF NOT EXISTS test')
+cursor.execute('DROP TABLE IF EXISTS test.persons')
+cursor.execute('CREATE TABLE test.persons (name VARCHAR(64), age INT, address STRING, '
+               'first TIMESTAMP, balance DECIMAL(12,2))')
+```
+
+Our table sql will have 5 columns defined in the above statement:
+```sql
+CREATE TABLE test.persons (
+    name VARCHAR(64), 
+    age INT, 
+    address STRING,
+    first TIMESTAMP, 
+    balance DECIMAL(12,2)
+)
+```
+
+### single insert
+Let's insert a single record:
+```python
+cursor.execute('''    
+INSERT INTO TABLE test.persons (name, age, address, first, balance)
+VALUES ('john doe', 35, '1583 Whistling Pines Dr, Redstone CO 80612', '08-22-1981 00:00:00', '100.10')
+''')
+```
+
+### `positional` parameterized sql query
+Insert a single record, using paramterized arguments that will automatically be escaped.    
+This prevents sql injection as well
+
+```python
+cursor.execute('''    
+INSERT INTO TABLE test.persons (name, age, address, first, balance)
+VALUES (%s, %s, %s, %s, %s)
+''', ['Kevin Jones', 28, '802 1st st, Raleigh NC', '12-23-2020 00:00:00', 85.25])
+```
+
+The signature of `execute` is:
+```python
+def execute(sql, params=None):
+    ""
+```
+- **sql** is the sql statement
+- **params** are `named (dict)` or `positional (sequence)` arguments used by the sql statement for variable 
+  substitution
+
+### `named` parameterized sql query
+**INSERT** with named parameters 
+
+In addition to positional parameters using `%s` we support `named parameters` as well.
+ 
+You can see the named arguments are defined below in the `sql` statement as: `(:name, :age, :addr, :dt, :bal)`  
+
+The second parameter to the `execute` method is a `dictionary` where the keys are equal to the parameters defined in the sql
+```python
+cursor.execute('''
+INSERT INTO TABLE test.persons (name, age, address, first, balance)
+VALUES (:name, :age, :addr, :dt, :bal)
+''', {'name': 'Bob Clark',
+      'age': 41,
+      'addr': '348 W Dickinson Rd, Norfolk VA',
+      'dt': '12-23-2020 00:00:00',
+      'bal': 200.20})
+```
+
+### Using `executemany`
+You can execute many queries in one python statement using `executemany`  
+
+Note that this is for programmer ease of use; hive's `jdbc` driver does not support `batch-mode`, so this functionality is faked and is no more 
+efficient than executing 3 statements individually.
+```
+cursor.executemany('''
+INSERT INTO TABLE test.persons (name, age, address, first, balance)
+VALUES (%s, %s, %s, %s, %s)
+''', [
+    ('john doe', 35, '1583 Whistling Pines Dr, Redstone CO 80612', '08-22-1981 00:00:00', 100.10),
+    ('Kevin Jones', 28, '802 1st st, Raleigh NC', '12-23-2020 00:00:00', 85.25),
+    ('Bob Clark', 41, '348 W Dickinson Rd, Norfolk VA', '12-23-2020 00:00:00', 200.20)
+])
 ```
