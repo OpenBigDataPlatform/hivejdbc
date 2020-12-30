@@ -31,6 +31,8 @@ DRIVER_CLASS = 'org.apache.hive.jdbc.HiveDriver'
 # javax.net.ssl.SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
 # Caused by: org.ietf.jgss.GSSException: No valid credentials provided (Mechanism level: Attempt to obtain new INITIATE credentials failed! (null))
 # -- when a ticket cannot be found.
+# org.apache.thrift.transport.TTransportException: org.apache.thrift.transport.TTransportException: javax.net.ssl.SSLHandshakeException: Remote host terminated the handshake
+# -- when trust-store is bad
 
 # org.apache.hive.service.cli.HiveSQLException: org.apache.hive.service.cli.HiveSQLException:
 # Error while compiling statement: FAILED: SemanticException [Error 10293]:
@@ -47,12 +49,14 @@ class HiveArgParser(ArgumentParser):
     cursor = ArgumentOpts(argtype=JdbcCursor, description='cursor class for queries')
     ssl = ArgumentOpts(argtype=bool, description='enable ssl connection mode, if the server is running with '
                                                  'ssl certificates enabled this is required')
-    trust_store = ArgumentOpts(argtype=str, requires=['trust_password', 'ssl'])
-    trust_password = ArgumentOpts(argtype=str, requires=['trust_store', 'ssl'])
+    trust_password = ArgumentOpts(argtype=str, secret=True, requires=['trust_store', 'ssl'])
     user = ArgumentOpts(argtype=str, description='Hive username if using username/password auth')
     password = ArgumentOpts(argtype=str, secret=True, requires=['user'], description='Hive basic auth password')
     user_principal = ArgumentOpts(argtype=str, description='Kerberos user principal', requires=['user_keytab'])
-    realm = ArgumentOpts(argtype=str, description='Kerberos realm (domain)', requires=['principal', 'user_keytab'])
+    realm = ArgumentOpts(argtype=str, description='Kerberos realm (domain), if set, "realm" must also be set,'
+                                                  'normally this value can be obtained automatically '
+                                                  'from "default_realm" within krb5.conf',
+                         requires=['principal', 'user_keytab', 'kdc'])
     properties = ArgumentOpts(argtype=dict, default={},
                               description='properties passed to org.apache.hive.jdbc.HiveDriver "connect" method')
     transport = ArgumentOpts(argtype=str, default='binary', choices=('binary', 'http'))
@@ -67,9 +71,22 @@ class HiveArgParser(ArgumentParser):
                                        requires=['service_discovery_mode'],
                                        description='Zookeeper namespace string for service discovery')
 
+    @Decorator.argument(argtype=str, requires=['trust_password', 'ssl'])
+    def trust_store(self, path):
+        """Path to the java ssl trust-store, generally required if ssl=True"""
+        if not isinstance(path, str):
+            raise ValueError('expected `str`, got: {}'.format(type(path)))
+
+        if not isfile(path):
+            raise ValueError('not a valid file')
+        return path
+
     @Decorator.argument(argtype=str, excludes=['username', 'password'])
     def principal(self, user):
         """Hive SERVICE principal, usually "hive" - should be fully qualified: `hive@EXAMPLE.COM`"""
+        if not isinstance(user, str):
+            raise ValueError('expected `str`, got: {}'.format(type(path)))
+
         if not Jvm.is_running():
             Jvm.add_argument('javax.security.auth.useSubjectCredsOnly',
                              '-Djavax.security.auth.useSubjectCredsOnly=false')
@@ -80,6 +97,9 @@ class HiveArgParser(ArgumentParser):
     @Decorator.argument(argtype=str, requires=['principal', 'user_principal'])
     def user_keytab(self, path):
         """Kerberos keytab - if provided the module will attempt kerberos login without the need for ``kinit``"""
+        if not isinstance(path, str):
+            raise ValueError('expected `str`, got: {}'.format(type(path)))
+
         if not isfile(path):
             raise ValueError('not a valid file')
         return path
@@ -89,6 +109,9 @@ class HiveArgParser(ArgumentParser):
         """Kerberos krb5.conf - default locations for the file are platform dependent
          or set via environment variable: "KRB5_CONFIG" - if your configuration is in a default location you
          typically do not need to explicitly provide this configuration."""
+        if not isinstance(path, str):
+            raise ValueError('expected `str`, got: {}'.format(type(path)))
+
         if not Jvm.is_running():
             Jvm.add_argument('java.security.krb5.conf', '-Djava.security.krb5.conf={}'.format(path))
         else:
@@ -170,37 +193,43 @@ class HiveConnect(ConnectFunction):
 
         # handle various ways kerberos can be configured:
         if args.get('principal'):  # kerberos is method of auth
-            kerberos.configure_jaas(use_password=False, no_prompt=True, use_ticket_cache=True)
-            """
             if args.get('user_keytab'):
+                # if user_keytab is set, this means we are expected to perform the kerberos authentication.
+                # we'll use jaas to accomplish this.
                 kerberos.configure_jaas(use_password=False, no_prompt=True, use_ticket_cache=False,
                                         principal=args.user_principal, keytab=args.user_keytab)
-            else:
-                # the default configuration DOES NOT PROMPT for username/password
+            elif args.get('principal'):
+                # If principal is set, but user_keytab is not set, this means we're just looking for an existing
+                # kinit session to authenticate
+                # this jaas configuration DOES NOT PROMPT for username/password
                 # but looks for an existing kerberos ticket created by the operating system or `kinit`
                 kerberos.configure_jaas(use_password=False, no_prompt=True, use_ticket_cache=True)
-            """
+            else:
+                pass
 
         if not Jvm.is_running():
             # we don't want to see warnings about log4j not being configured, so we'll disable the log4j logger
+            # this will not prevent other log messages from appearing in stdout
             Jvm.add_argument('org.apache.logging.log4j.simplelog.StatusLogger.level',
                              '-Dorg.apache.logging.log4j.simplelog.StatusLogger.level=OFF')
         else:
             System.set_property('org.apache.logging.log4j.simplelog.StatusLogger.level', 'OFF')
 
         # if the realm is not set try to set it from the principal
-        if args.get('user_principal') and not args.get('realm'):
-            args.realm = kerberos.realm_from_principal(args.principal)
+        if args.get('kdc') and not args.get('realm'):
+            args.realm = (kerberos.realm_from_principal(args.principal) or
+                          kerberos.realm_from_principal(args.get('user_principal', '')))
             if not args.realm:
-                raise ValueError('Argument "realm" must be set if "keytab" is used, either explicitly or in '
+                raise ValueError('Argument "realm" must be set if "kdc" is set, either explicitly or in '
                                  'the principal name')
+
+        if args.get('kdc') and args.get('realm'):
+            # set the realm
+
             if not Jvm.is_running():
                 Jvm.add_argument('java.security.krb5.realm', '-Djava.security.krb5.realm={}'.format(args.realm))
             else:
                 System.set_property('java.security.krb5.realm', args.realm)
-
-    def kerberos_login(self, args: ConnectArguments):
-        kerberos.kerberos_login_keytab(args.krb_user, args.keytab)
 
     def get_connection(self, driver_class: JClass, args: ConnectArguments):
         """
@@ -271,8 +300,8 @@ class HiveConnect(ConnectFunction):
 
         conn_str = ';'.join(options)
 
-        if args.get('user_keytab'):
-            self.kerberos_login(args)
+        #if args.get('user_keytab'):
+        #    self.kerberos_login(args)
 
         log.debug('hive connection string: %s', conn_str)  # TODO make secure
 
