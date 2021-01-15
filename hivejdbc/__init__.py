@@ -45,7 +45,8 @@ class HiveArgParser(ArgumentParser):
                                                              'separated list of hosts to attempt')
     database = ArgumentOpts(position=1, argtype=str, description='Database name to connect to, `default`')
     port = ArgumentOpts(argtype=int, default=10000, description='Hive port, deafults to `10000`')
-    driver = ArgumentOpts(argtype=str, description='Location to hive uber-jar')
+    driver = ArgumentOpts(argtype=str, description='Location to hive uber-jar (not required if Hive, Hadoop jars '
+                                                   'are on the classpath already)')
     cursor = ArgumentOpts(argtype=JdbcCursor, description='cursor class for queries')
     ssl = ArgumentOpts(argtype=bool, description='enable ssl connection mode, if the server is running with '
                                                  'ssl certificates enabled this is required')
@@ -60,7 +61,7 @@ class HiveArgParser(ArgumentParser):
     properties = ArgumentOpts(argtype=dict, default={},
                               description='properties passed to org.apache.hive.jdbc.HiveDriver "connect" method')
     transport = ArgumentOpts(argtype=str, default='binary', choices=('binary', 'http'))
-    http_path = ArgumentOpts(argtype=str, description='HTTP endpoint for when HiveServer2 is running HTTP mode.\n'
+    http_path = ArgumentOpts(argtype=str, description='HTTP endpoint for when HiveServer2 is running in HTTP mode.\n'
                                                       'this is a rarely used option. Only set this if `transport` '
                                                       'is set to `binary`')
     init_file = ArgumentOpts(argtype=str, description='This script file is written with SQL statements which will be '
@@ -85,7 +86,7 @@ class HiveArgParser(ArgumentParser):
     def principal(self, user):
         """Hive SERVICE principal, usually "hive" - should be fully qualified: `hive@EXAMPLE.COM`"""
         if not isinstance(user, str):
-            raise ValueError('expected `str`, got: {}'.format(type(path)))
+            raise ValueError('expected `str`, got: {}'.format(type(user)))
 
         if not Jvm.is_running():
             Jvm.add_argument('javax.security.auth.useSubjectCredsOnly',
