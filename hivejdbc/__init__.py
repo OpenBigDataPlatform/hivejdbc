@@ -186,7 +186,8 @@ class HiveConnect(ConnectFunction):
         :return:
         """
         # set driver path from connect function argument `driver`
-        self.driver_path = abspath(args.get('driver'))
+        driver_path = args.get('driver')
+        self.driver_path = abspath(driver_path) if driver_path else None
 
         # override the cursor class if requested.
         if args.get('cursor'):
